@@ -1,0 +1,16 @@
+# Build output
+*.app/
+Tests/fixture
+__pycache__/
+
+# Generated at build time from Tools/strings.py
+Resources/en.lproj/
+Resources/ko.lproj/
+
+# Early experiments (not part of the app)
+spike/
+
+# Screenshots written by the test tools (--builtin-suite, --render-ui, --flytest); regenerate as needed
+TestFrames/
+
+.DS_Store
