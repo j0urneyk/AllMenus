@@ -150,3 +150,6 @@ Shadows, shelf content, window creation and the morph itself were each changed i
 - Menus open at the item's real spot (near the notch for hidden items), because they are the apps' real menus; the flight animation shows where.
 - An app that ignores `AXPress` while its icon is also hidden in the menu bar cannot be opened.
 - An icon that has never been drawn on screen is shown with its app icon instead.
+
+## License
+MIT, see [LICENSE](LICENSE).
