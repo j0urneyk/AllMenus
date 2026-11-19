@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var notch: NotchTrigger?
     var subs = Set<AnyCancellable>()
     var suite: BuiltinSuite?
+    var recorder: DemoRecorder?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         let args = CommandLine.arguments
@@ -156,6 +157,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        if let i = args.firstIndex(of: "--record-demo"), i + 1 < args.count {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.recorder = DemoRecorder(shelf: self.shelf, out: args[i + 1])
+                self.recorder?.run()
+            }
+        }
         if args.contains("--search-probe") {
             // Judge for "the shelf must not resize while searching": type step by step and compare the
             // drawn outline and the window frame with the moment the shelf finished opening.
@@ -290,6 +297,50 @@ if let i = args.firstIndex(of: "--render-ui"), i + 1 < args.count {
     print("rendered to \(out) in", Bundle.main.preferredLocalizations.first ?? "?")
     exit(0)
 }
+if let i = args.firstIndex(of: "--render-docs"), i + 1 < args.count {
+    // Screenshots for the README/docs, made from demo items (never the machine's own apps) on a
+    // drawn backdrop (wallpaper, menu bar, notch), off screen. English UI: -AppleLanguages "(en)".
+    _ = NSApplication.shared
+    DemoContent.enabled = true
+    let out = args[i + 1]
+    func render(_ view: some View, _ size: CGSize, _ name: String, dark: Bool = false) {
+        let host = NSHostingView(rootView: AnyView(view.frame(width: size.width, height: size.height)))
+        host.frame = NSRect(origin: .zero, size: size)
+        let w = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: size.width, height: size.height),
+                         styleMask: [.borderless], backing: .buffered, defer: false)
+        w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        w.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+        host.cacheDisplay(in: host.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(out)/\(name).png"))
+    }
+    let notch = CGSize(width: 185, height: 32)
+    func shelf(_ layout: ShelfLayout, keys: String = "", select: Int? = nil, name: String) {
+        let saved = Settings.shared.layout
+        Settings.shared.layout = layout
+        let m = ShelfModel()
+        m.items = DemoContent.items()
+        m.iconSnapshot = DemoContent.icons(for: m.items)
+        m.closedSize = notch; m.topInset = notch.height; m.open = true
+        let natural = NSHostingView(rootView: ShelfContent(model: m, settings: Settings.shared).fixedSize().modifier(DarkIf(on: true))).fittingSize
+        m.contentSize = natural; m.lockedSize = natural
+        if !keys.isEmpty { m.keys = keys.map(String.init); m.searchFocused = true; m.lastTyped = Date() }
+        m.selectedID = select.map { m.flat[$0].id } ?? m.flat.first?.id
+        let size = CGSize(width: max(natural.width + 220, 820), height: natural.height + 70)
+        render(ZStack(alignment: .top) { DemoBackdrop(notch: notch); ShelfRoot(model: m, settings: Settings.shared) }, size, name)
+        Settings.shared.layout = saved
+    }
+    shelf(.grid, name: "shelf-grid")
+    shelf(.list, select: 3, name: "shelf-list")
+    shelf(.grid, keys: "vpn", name: "shelf-search-grid")
+    render(AppearancePane(), CGSize(width: 560, height: 800), "settings-appearance")
+    setenv("ALLMENUS_ONBOARDING_STEP", "0", 1)
+    render(OnboardingView(done: {}), CGSize(width: 560, height: 480), "onboarding", dark: true)
+    print("docs images written to \(out)")
+    exit(0)
+}
 if args.contains("--route-test") {
     // Route judge on the real notch geometry of this Mac (built-in display), independent of which
     // display is active: for each start tile × destination, does the flying glyph ever overlap the notch?
@@ -381,7 +432,7 @@ if let i = args.firstIndex(of: "--render-notch"), i + 1 < args.count {
     }
     exit(0)
 }
-if args.contains("--list") || args.contains("--selftest") || args.contains("--matte-test") {
+if args.contains("--list") || args.contains("--selftest") || args.contains("--matte-test") || args.contains("--hangul-test") {
     _ = NSApplication.shared
     SelfTest.run(args)
     exit(0)

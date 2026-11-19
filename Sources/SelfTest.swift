@@ -88,7 +88,40 @@ enum SelfTest {
         print(pass ? "RESULT matte PASS" : "RESULT matte FAIL")
     }
 
+    /// Korean input: 2-set key sequences must compose into the right syllables, and search must find
+    /// items by syllables, typed jamo and initial consonants. Keys are given as the Latin keys typed
+    /// with the Korean 2-set layout; expected results as Unicode escapes.
+    static func hangulTest() {
+        func jamo(_ keys: String) -> [String] { keys.map { Hangul.dubeolsik[$0] ?? String($0) } }
+        let compose: [(String, String)] = [
+            ("qoxjfl", "\u{BC30}\u{D130}\u{B9AC}"),          // battery
+            ("zkzkdhxhr", "\u{CE74}\u{CE74}\u{C624}\u{D1A1}"), // kakaotalk
+            ("ekfr", "\u{B2ED}"), ("ekfrl", "\u{B2EC}\u{AE30}"),   // compound final, then split by a vowel
+            ("rhk", "\u{ACFC}"), ("dmlwk", "\u{C758}\u{C790}"),    // compound vowels
+            ("dkssud", "\u{C548}\u{B155}"), ("Qkd", "\u{BE75}"), ("abc", "\u{BBBB}"),
+            ("zzd", "\u{314B}\u{314B}\u{3147}")]                 // lone consonants stay jamo
+        var ok = 0
+        for (keys, want) in compose {
+            let got = Hangul.compose(jamo(keys))
+            if got == want { ok += 1 } else { print("FAIL compose \(keys): got \(got), want \(want)") }
+        }
+        let name = "\u{CE74}\u{CE74}\u{C624}\u{D1A1}"            // kakaotalk
+        let match: [(String, String, Bool)] = [
+            (name, String(jamo("zzdx").joined()), true),             // initial consonants
+            (name, String(jamo("zkz").joined()), true),              // typed jamo mid-composition
+            (name, Hangul.compose(jamo("zkzk")), true),              // composed syllables
+            (name, String(jamo("qx").joined()), false),
+            ("Weather", "weath", true), ("Weather", String(jamo("zz").joined()), false)]
+        var mok = 0
+        for (text, q, want) in match {
+            if Hangul.matches(text, q) == want { mok += 1 } else { print("FAIL match \(q) in \(text)") }
+        }
+        print("compose \(ok)/\(compose.count) · search \(mok)/\(match.count)")
+        print(ok == compose.count && mok == match.count ? "RESULT PASS" : "RESULT FAIL")
+    }
+
     static func run(_ args: [String]) {
+        if args.contains("--hangul-test") { hangulTest(); return }
         if args.contains("--matte-test") { matteTest(args); return }
         print("Accessibility trusted:", AXIsProcessTrusted(), " Screen capture:", IconCache.canCapture)
         var times: [Double] = []

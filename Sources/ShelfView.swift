@@ -461,7 +461,7 @@ struct ListRow: View {
         return s.width / s.height > 1.9
     }
     /// Wide icons: a symbol (system items) or the app's own icon in the icon column.
-    private var leadingIcon: IconImage? { isWide ? (IconCache.fallback(item) ?? icon) : icon }
+    private var leadingIcon: IconImage? { isWide ? (DemoContent.listSymbol(for: item) ?? IconCache.fallback(item) ?? icon) : icon }
 
     var body: some View {
         HStack(spacing: 12) {

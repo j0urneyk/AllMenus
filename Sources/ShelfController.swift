@@ -32,6 +32,11 @@ final class ShelfController: NSObject {
     private let glassMask = CAShapeLayer()            // …cut to the same outline
     private let glassRim = CAShapeLayer()
     private let host = NSHostingView(rootView: AnyView(EmptyView()))
+    /// Holds the content and is masked by the same outline as the body, so while the shelf morphs out
+    /// of the notch the content shows only inside it (otherwise the fading-in content, already laid
+    /// out at full size, shows over the desktop outside the still-small body).
+    private let clip = FlippedView()
+    private let contentMask = CAShapeLayer()
     private let measurer = NSHostingView(rootView: AnyView(EmptyView()))
 
     private var outsideMonitor: Any?
@@ -45,6 +50,10 @@ final class ShelfController: NSObject {
     var onSettings: (() -> Void)?
     /// Tests: open on this screen regardless of where the pointer is.
     var forcedScreen: NSScreen?
+    /// Recording: show() stops after putting the closed shelf on screen and leaves the opening
+    /// morph here, so a capture can be running before anything moves.
+    var holdMorphForRecording = false
+    private(set) var pendingMorph: (() -> Void)?
     /// Time from trigger to the window being on screen, for --measure.
     private(set) var lastShowLatency: TimeInterval = 0
 
@@ -98,7 +107,11 @@ final class ShelfController: NSObject {
 
         host.sizingOptions = []
         host.wantsLayer = true
-        root.addSubview(host)
+        clip.wantsLayer = true
+        contentMask.fillColor = NSColor.black.cgColor
+        clip.layer?.mask = contentMask
+        clip.addSubview(host)
+        root.addSubview(clip)
 
         model.onPick = { [weak self] in self?.pick($0) }
         window.onKeyChange = { [weak self] key in
@@ -183,13 +196,17 @@ final class ShelfController: NSObject {
         model.closedSize = useNotch ? notch!.size : .zero
         var marks: [(String, CFTimeInterval)] = [("start", CACurrentMediaTime())]
         let display = MenuExtras.cgBounds(scr)
-        let (prefetched, fresh) = ItemsCache.shared.items(for: display)
-        model.items = prefetched
-        if fresh { ItemsCache.shared.prefetch(for: display) }   // re-read for next time, off the main thread
+        if DemoContent.enabled {
+            model.items = DemoContent.items()
+        } else {
+            let (prefetched, fresh) = ItemsCache.shared.items(for: display)
+            model.items = prefetched
+            if fresh { ItemsCache.shared.prefetch(for: display) }   // re-read for next time, off the main thread
+        }
         marks.append(("enumerate", CACurrentMediaTime()))
         model.keys = []
         model.selectedID = nil
-        model.iconSnapshot = Dictionary(model.items.compactMap { i in
+        model.iconSnapshot = DemoContent.enabled ? DemoContent.icons(for: model.items) : Dictionary(model.items.compactMap { i in
             (IconCache.shared.cached(i) ?? IconCache.fallback(i)).map { (i.id, $0) } }, uniquingKeysWith: { a, _ in a })
         openedByHover = byHover
         closing = false
@@ -213,6 +230,7 @@ final class ShelfController: NSObject {
         window.setFrame(NSRect(x: x, y: scr.frame.maxY - h, width: w, height: h), display: false)
         root.frame = NSRect(origin: .zero, size: NSSize(width: w, height: h))
         glass.frame = root.bounds
+        clip.frame = root.bounds; contentMask.frame = clip.bounds
 
         // Full mode: tiles start hidden and cascade in just after the drop stage of the morph.
         let full = st.effectiveAnimation == .full
@@ -248,11 +266,12 @@ final class ShelfController: NSObject {
             setShape(closedPath())
             host.layer?.opacity = 0
             CATransaction.flush()
-            DispatchQueue.main.async { [weak self] in
+            let start = { [weak self] in
                 guard let self, self.model.open, !self.closing else { return }
                 self.morph(from: self.closedPath(), to: self.openPath(), opening: true)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.model.revealed = true }
             }
+            if holdMorphForRecording { pendingMorph = start } else { DispatchQueue.main.async(execute: start) }
         case .reduced:
             setShape(openPath())
             fadeWindow(in: true)
@@ -294,7 +313,7 @@ final class ShelfController: NSObject {
                               bodyWidth: max(neckW, closedBodyW) + 26, bodyBottom: bodyTop + drop)
     }
 
-    private var shapeLayers: [CAShapeLayer] { model.glass ? [glassMask, glassRim] : [fill] }
+    private var shapeLayers: [CAShapeLayer] { (model.glass ? [glassMask, glassRim] : [fill]) + [contentMask] }
 
     /// Puts the outline in place with no motion, content fully visible.
     private func setShape(_ path: CGPath) {
@@ -426,6 +445,7 @@ final class ShelfController: NSObject {
             window.setFrame(NSRect(x: f.midX - w / 2, y: f.maxY - h, width: w, height: h), display: false)
             root.frame = NSRect(origin: .zero, size: NSSize(width: w, height: h))
             glass.frame = root.bounds
+        clip.frame = root.bounds; contentMask.frame = clip.bounds
             for l in shapeLayers { l.removeAllAnimations(); l.path = openPath(); if l === fill { l.shadowPath = l.path } }
         }
         host.frame = NSRect(x: cx - cs.width / 2, y: model.glass ? neckH : 0, width: cs.width, height: cs.height)
@@ -483,6 +503,7 @@ final class ShelfController: NSObject {
     var presentedContentOpacity: Float { host.layer?.presentation()?.opacity ?? host.layer?.opacity ?? 0 }
 
     private func pick(_ item: MenuExtra) {
+        if DemoContent.enabled { close(animated: true, picked: true); return }
         let st = Settings.shared
         guard st.flyToMenuBar, st.effectiveAnimation == .full else {
             close(animated: st.effectiveAnimation == .reduced, picked: true)
