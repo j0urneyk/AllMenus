@@ -134,6 +134,8 @@ def esc(s):  # already in source-escape form (\n stays as backslash-n); escape q
 if __name__ == "__main__":
     import os
     root = os.path.join(os.path.dirname(__file__), "..", "Resources")
+    for lang in ("en", "ko"):
+        os.makedirs(os.path.join(root, lang + ".lproj"), exist_ok=True)   # generated, so not in a fresh clone
     with open(os.path.join(root, "en.lproj", "Localizable.strings"), "w") as f:
         f.write("/* All Menus - English. The source strings are English, so each key maps to itself. */\n\n")
         for k in KO: f.write(f'"{esc(k)}" = "{esc(k)}";\n')
