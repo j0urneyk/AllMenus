@@ -27,10 +27,20 @@ AM="./All Menus.app/Contents/MacOS/AllMenus"
 ## Test fixture
 `Tests/fixture.swift` is a tiny app that adds status items to the menu bar:
 ```bash
-swiftc -O Tests/fixture.swift -o Tests/fixture
+swiftc -O Tests/fixture.swift -o Tests/fixture -module-name fixture
 Tests/fixture overflow 6 &          # six wide items: overfills the menu bar to produce hidden items
 Tests/fixture icons /tmp/truth &    # items with icons of known shape; writes the exact images as ground truth
+Tests/fixture clicktypes /tmp/log monitor &   # an item that ignores a press (see below)
 ```
+
+### Items that ignore a press
+`clicktypes <log> [type…]` adds one item per type and writes every event, open and close to the log, so the app's side of a click can be checked, not just the windows on screen. Types: `menu` (ordinary), `monitor`, `event`, `view`, `gesture` (the four ways apps react only to mouse events), `timer` (`monitor` with a title that keeps changing) and `toggle` (switches its title, opens nothing). Measured on the MacBook display, picked once while visible and then twice while hidden:
+
+| Type | AXPress | Visible | Hidden |
+|---|---|---|---|
+| menu | opens | press | press |
+| monitor, event, view, gesture, timer | nothing | real click | remembered click, about 85 ms |
+| toggle | switches | press only, switched once per pick | press only, switched once per pick |
 
 ### Background removal
 ```bash

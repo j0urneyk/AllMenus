@@ -155,7 +155,7 @@ final class BuiltinSuite {
             self.shelf.pickForTest(item)
             self.after(0.55) {
                 self.log(self.meter.report("flight → \(item.hidden ? "notch" : "bar") (\(item.shortName))", from: t, to: t + FlyTo.duration + 0.05))
-                SelfTest.key(53)
+                SelfTest.closePopups()
                 self.after(0.7) { self.fpsFlights(Array(left.dropFirst())) }
             }
         }
@@ -195,10 +195,10 @@ final class BuiltinSuite {
             let wn = FlyTo.lastWindowNumber
             var opened: Double? = nil
             Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { t in
-                if opened == nil, !MenuExtras.popupWindowIDs().subtracting(before).isEmpty { opened = Date().timeIntervalSince(t0) }
+                if opened == nil, !MenuExtras.popupWindowIDs(of: item.isSystem ? nil : [item.pid]).subtracting(before).isEmpty { opened = Date().timeIntervalSince(t0) }
                 if Date().timeIntervalSince(t0) > 2 { t.invalidate() }
             }
-            for ms in [150, 280, 380, 470, 750] {
+            for ms in [150, 280, 380, 470, 750, 1500] {
                 self.after(Double(ms) / 1000) {
                     let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
                     let on = info.contains { ($0[kCGWindowNumber as String] as? Int) == wn }
@@ -208,8 +208,15 @@ final class BuiltinSuite {
             }
             self.after(1.6) {
                 self.log(opened.map { String(format: "   real menu opened after %.0f ms", $0 * 1000) } ?? "   real menu did NOT open")
-                if opened != nil { SelfTest.key(53) }
-                self.after(0.6) { self.flights(Array(left.dropFirst())) }
+                if opened != nil {
+                    SelfTest.closePopups()
+                    // Popovers that ignore Escape close on a click elsewhere: on our own test window.
+                    if let w = self.probe {
+                        let h = NSScreen.screens[0].frame.maxY
+                        MenuExtras.click(at: CGPoint(x: w.frame.midX, y: h - (w.frame.maxY - 12)))
+                    }
+                }
+                self.after(2.0) { self.flights(Array(left.dropFirst())) }
             }
         }
     }

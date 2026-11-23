@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if opened || el > 2 {
                             t.invalidate()
                             log(String(format: "%@ %@ — menu %@ after %.0f ms", args[i], item.displayName, opened ? "OPENED" : "did NOT open", el * 1000))
-                            if opened { SelfTest.key(53) }
+                            if opened { SelfTest.closePopups() }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { exit(opened ? 0 : 1) }
                         }
                     }
@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         let layer = w?[kCGWindowLayer as String].map { "\($0)" } ?? "-"
                         let glyph = FlyTo.liveNode?.sublayers?.last?.presentation()?.opacity ?? -1
                         print(String(format: "t=%4dms icon window on screen: %@  window level: %@  glyph opacity: %.2f", ms, on ? "yes" : "no ", layer, glyph))
-                        if ms == 1200 { SelfTest.key(53); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exit(0) } }
+                        if ms == 1200 { SelfTest.closePopups(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exit(0) } }
                     }
                 }
             }

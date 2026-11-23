@@ -32,6 +32,7 @@ This creates a self-signed **"All Menus Local Signing"** certificate (valid for 
 |---|---|
 | `Sources/main.swift` | App delegate, launch, and the command-line test and render modes |
 | `Sources/MenuExtras.swift` | Reading menu bar items (Accessibility), hidden detection, opening items, background prefetch |
+| `Sources/ItemOpener.swift` | Opening items that ignore a press: real click, remembered click, opening the app again |
 | `Sources/IconCache.swift`, `Sources/Matting.swift` | Capturing icons and separating them from the menu bar background |
 | `Sources/ShelfController.swift` | The shelf window: placement, open/close morph, mask, keyboard, auto-dismiss |
 | `Sources/ShelfView.swift` | SwiftUI content: shelf path, grid and list layouts, search, caret |
@@ -69,6 +70,7 @@ Images in `docs/images` are made from **demo items** (never the apps on the mach
 | `AM_DEMO=1` | Demo items instead of the real menu bar |
 | `AM_TIMING=1` | Print how long each step of opening takes |
 | `AM_NOSHADOW`, `AM_NOCONTENT`, `AM_KEEPORDERED`, `AM_SIMPLEMORPH` | Experiments used to rule out causes of dropped frames (no shadow, no content, keep the window ordered in, single-stage morph) |
+| `AM_CLICK_LOG=1` | Print how each item was opened |
 | `AM_PROBE_MS` | How long `--openprobe` keeps the shelf open |
 | `AM_RENDER_KEYS`, `AM_RENDER_FOCUS` | Search text and focused search box for `--render-notch` |
 | `ALLMENUS_ONBOARDING_STEP` | Which permission-guide step to show first |

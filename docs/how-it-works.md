@@ -2,14 +2,20 @@
 
 ## Finding the menu bar items
 - Every running app exposes its menu bar items ("status items") through the Accessibility API as `AXExtrasMenuBar`. All Menus reads those, with their titles, descriptions and on-screen frames.
-- Whether an item is **hidden** is decided by the item's own window in `CGWindowList`: macOS keeps a window for every status item, but doesn't draw the ones that don't fit (behind the notch, or squeezed out by long app menus). An item whose window isn't on screen is hidden.
+- Whether an item is **hidden** is decided by the item's own window in `CGWindowList`: macOS keeps a window for every status item, but doesn't draw the ones that don't fit (behind the notch, or squeezed out by long app menus). An item whose window isn't on screen is hidden, and so is one that isn't entirely to the right of the notch: an item that was drawn once and then pushed behind the notch keeps its on-screen flag.
 - With an external display connected, macOS keeps a menu bar on each display. "Hidden" is judged for the display the shelf opens on, and an item's counterpart on the other display is found by pairing windows of equal width in right-to-left order.
 - The list is read on a background thread ahead of time: when the pointer reaches the notch (during the hover delay) and every 5 seconds. Reading it on the main thread when opening took 37–45 ms, up to 290 ms with an app that answers slowly, and was the cause of dropped frames at the start of the opening animation.
 
 ## Opening an item's menu
 - All Menus sends `AXPress` to the item. macOS opens the **app's real menu or popover**, at the item's real spot in the menu bar, even when the item isn't drawn.
 - `AXPress` blocks until the menu closes, so it runs off the main thread.
-- Some apps accept `AXPress` but only react to a real click. If no menu or popover window appears within 0.4 s and the icon is visible, a real click is sent to it (the pointer is put back afterwards). A hidden item that ignores `AXPress` can't be opened.
+- Some apps accept `AXPress` and do nothing, because they react only to mouse events: they watch for a mouse-down in their button's window (a local event monitor), check the type of the current event, put a view of their own on the button, or use a gesture recognizer. `AXPress` produces no mouse event. If nothing of the item's app appears within 0.4 s (`ItemOpener`):
+  - **Visible:** a real click is sent (the pointer is put back afterwards). An event tap looks at that click on its way to the app and remembers it, including the layer context (`CAContext`) the window server addressed it to, in an undocumented event field. AppKit needs it to find the status item's window, because on macOS 26 the windows in the menu bar belong to Control Center; a click without it arrives in the app without a window.
+  - **Hidden, opened before while visible:** the remembered click is posted to that process only. The app doesn't know or care that its item isn't drawn. Addresses are kept in memory, until either app quits.
+  - **Hidden, never opened while visible:** the app is opened again, as by double-clicking it in Finder. Menu bar apps usually answer by showing their popover or window.
+- A press that **switches** something opens nothing either, and a click would switch it back. The item's window is captured before and after (macOS lets a window that isn't drawn be captured); if it changed and stays changed, the press worked. Items that change all the time (a timer) are told apart by a third capture.
+- Which way an item needs is remembered, so the next pick goes straight to it. Items that opened by a press never get a click.
+- Nothing is ever moved in the menu bar. Moving hidden items into view by a synthetic ⌘-drag was tried and dropped: putting them back isn't reliable.
 
 ## Icon images
 The shelf shows the icons as they look in the menu bar, separated from the menu bar's background (difference matting). This needs the Screen Recording permission; without it, app icons and SF Symbols stand in.

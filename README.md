@@ -66,7 +66,7 @@ When opened by resting on the notch, the shelf closes once the pointer leaves it
 
 ## Limitations
 - Menus open at the item's real spot in the menu bar (near the notch for hidden items), because they are the apps' real menus.
-- An app that ignores Accessibility "press" requests and is also hidden in the menu bar can't be opened.
+- A hidden item whose app reacts only to mouse clicks is opened by opening its app again, until it has been opened once while visible. That usually shows the same popover, but an app may show another window, or nothing.
 - An icon that has never been drawn on screen is shown with its app icon until it has been.
 
 ## Documentation

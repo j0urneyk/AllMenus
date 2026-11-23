@@ -59,6 +59,16 @@ enum MenuExtras {
         return ids.map { CGDisplayBounds($0) }
     }
 
+    /// Status items are only drawn to the right of the notch. The window server's on-screen flag alone isn't
+    /// enough: an item that was shown and then pushed back behind the notch keeps the flag.
+    private static func behindNotch(_ r: CGRect) -> Bool {
+        NSScreen.screens.contains { s in
+            guard s.safeAreaInsets.top > 0, let right = s.auxiliaryTopRightArea else { return false }
+            let d = cgBounds(s)
+            return abs(r.minY - d.minY) < 2 && r.midX >= d.minX && r.midX <= d.maxX && r.minX < d.minX + (right.minX - s.frame.minX) - 1
+        }
+    }
+
     /// Menu-bar-sized windows at the status layer, grouped by display, each group sorted right-to-left.
     static func statusWindowsByDisplay() -> [(display: CGRect, windows: [StatusWindow])] {
         let info = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -70,7 +80,7 @@ enum MenuExtras {
                   r.height > 0, r.height < 50 else { continue }
             all.append(StatusWindow(id: w[kCGWindowNumber as String] as? CGWindowID ?? 0,
                                     frame: r,
-                                    onScreen: w[kCGWindowIsOnscreen as String] as? Bool ?? false))
+                                    onScreen: (w[kCGWindowIsOnscreen as String] as? Bool ?? false) && !behindNotch(r)))
         }
         return displayBounds().compactMap { d in
             let ws = all.filter { abs($0.frame.minY - d.minY) < 2 && $0.frame.midX >= d.minX - 400 && $0.frame.midX <= d.maxX + 400 }
@@ -157,7 +167,8 @@ enum MenuExtras {
     }
 
     /// IDs of on-screen windows that look like an opened menu or popover (not the menu bar icons themselves).
-    static func popupWindowIDs() -> Set<CGWindowID> {
+    /// - Parameter pids: only windows of these processes.
+    static func popupWindowIDs(of pids: Set<pid_t>? = nil) -> Set<CGWindowID> {
         let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         return Set(info.compactMap { w in
             guard let b = w[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: b),
@@ -166,36 +177,15 @@ enum MenuExtras {
             guard layer != 25 || r.height > 50 else { return nil }
             // Our own windows (the shelf, the flying icon) are never "the menu that opened".
             if (w[kCGWindowOwnerPID as String] as? pid_t) == ProcessInfo.processInfo.processIdentifier { return nil }
+            if let pids, !pids.contains(w[kCGWindowOwnerPID as String] as? pid_t ?? 0) { return nil }
             return w[kCGWindowNumber as String] as? CGWindowID
         })
     }
 
-    /// Opens the item's own menu (or popover) exactly as a click in the menu bar would.
-    /// AXPress blocks until the menu closes or times out, so it runs off the main thread.
-    /// Some apps accept AXPress but only react to a real mouse click; if nothing shows up
-    /// within `clickFallbackDelay` and the icon is drawn somewhere, click it for real.
-    static let clickFallbackDelay: TimeInterval = 0.4
+    /// Opens the item's own menu (or popover) as a click in the menu bar would; see `ItemOpener`.
+    static func press(_ item: MenuExtra) { ItemOpener.open(item) }
 
-    static func press(_ item: MenuExtra) {
-        let el = item.element
-        let before = popupWindowIDs()
-        DispatchQueue.global(qos: .userInteractive).async {
-            _ = AXUIElementPerformAction(el, kAXPressAction as CFString)
-        }
-        guard !item.hidden else { return }
-        let center = CGPoint(x: item.frame.midX, y: item.frame.midY)
-        let t0 = Date()
-        Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { t in
-            if !popupWindowIDs().subtracting(before).isEmpty { t.invalidate(); return }
-            let elapsed = Date().timeIntervalSince(t0)
-            guard elapsed >= clickFallbackDelay else { return }
-            t.invalidate()
-            // If we were not polled in time, a menu may have opened and closed unseen: never click late.
-            if elapsed < clickFallbackDelay + 0.15 { click(at: center) }
-        }
-    }
-
-    /// Fallback for items that ignore AXPress: a real click at the visible icon, then put the cursor back.
+    /// A real click at a visible icon, then the cursor is put back.
     static func click(at p: CGPoint) {
         let back = CGEvent(source: nil)?.location ?? p
         let src = CGEventSource(stateID: .hidSystemState)

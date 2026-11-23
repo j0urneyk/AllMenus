@@ -17,6 +17,31 @@ enum SelfTest {
         })
     }
 
+    /// Closes the menus and popovers that are open without handing an Escape to whatever app is in front (in a
+    /// terminal or chat app that keystroke would act on the user's work): menus are cancelled through
+    /// Accessibility, popovers get an Escape addressed to their own process.
+    static func closePopups() {
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let me = ProcessInfo.processInfo.processIdentifier
+        let pids = Set(info.compactMap { w -> pid_t? in
+            let layer = w[kCGWindowLayer as String] as? Int ?? 0
+            let h = (w[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }?.height ?? 0
+            guard layer == 101 || (layer >= 20 && layer < 101 && h > 50) else { return nil }
+            return w[kCGWindowOwnerPID as String] as? pid_t
+        }).subtracting([me])
+        func attr(_ e: AXUIElement, _ a: String) -> CFTypeRef? { var v: CFTypeRef?; AXUIElementCopyAttributeValue(e, a as CFString, &v); return v }
+        for pid in pids {
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, 0.25)
+            if let bar = attr(app, "AXExtrasMenuBar") {
+                for item in attr(bar as! AXUIElement, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
+                    for menu in attr(item, kAXChildrenAttribute) as? [AXUIElement] ?? [] { AXUIElementPerformAction(menu, kAXCancelAction as CFString) }
+                }
+            }
+            for down in [true, false] { CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: down)?.postToPid(pid) }
+        }
+    }
+
     static func key(_ code: CGKeyCode) {
         let s = CGEventSource(stateID: .hidSystemState)
         CGEvent(keyboardEventSource: s, virtualKey: code, keyDown: true)?.post(tap: .cghidEventTap)
@@ -149,7 +174,7 @@ enum SelfTest {
             let t0 = Date()
             MenuExtras.press(item)
             var appeared: Win? = nil
-            while Date().timeIntervalSince(t0) < 1.5 {
+            while Date().timeIntervalSince(t0) < 2.5 {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.01))  // lets the click-fallback timer run
                 let new = onScreen().subtracting(before).filter { ($0.layer != 25 || $0.frame.height > 50) && $0.frame.height > 20 && $0.frame.width > 20 }
                 if args.contains("--verbose"), !new.isEmpty { print("   new:", new.map { "\($0.owner) L\($0.layer) x=\(Int($0.frame.minX))" }) }
@@ -164,11 +189,12 @@ enum SelfTest {
                 print(String(format: "OPEN  %-40@ %4.0f ms  menu at x=%.0f y=%.0f (%@, layer %d)%@", item.displayName as NSString, ms,
                              w.frame.minX, w.frame.minY, w.owner, w.layer, item.hiddenHere ? "  [hidden on built-in]" : ""))
             } else {
-                print(String(format: "FAIL  %-40@ nothing appeared within 1.5 s%@", item.displayName as NSString, item.hiddenHere ? "  [hidden on built-in]" : ""))
+                print(String(format: "FAIL  %-40@ nothing appeared within 2.5 s%@", item.displayName as NSString, item.hiddenHere ? "  [hidden on built-in]" : ""))
             }
+            if appeared != nil { RunLoop.current.run(until: Date().addingTimeInterval(0.15)) }   // nobody closes a menu sooner
             // Close whatever opened and wait until the screen is back to how it was.
             // Esc only when something opened, so a stray key never reaches the user's frontmost app.
-            if appeared != nil { key(53) }
+            if appeared != nil { closePopups() }
             let tc = Date()
             while Date().timeIntervalSince(tc) < 1.0 {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.03))
